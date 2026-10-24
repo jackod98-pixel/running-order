@@ -58,12 +58,12 @@
             <div class="grid md:grid-cols-2 gap-8 items-center">
                 <!-- Drop Zone -->
                 <div>
-                    <label for="excel-file" id="drop-zone" class="flex flex-col items-center justify-center border-2 border-dashed border-dark-600 hover:border-indigo-500/50 bg-dark-900/50 hover:bg-dark-900 rounded-xl p-8 cursor-pointer transition-all duration-300 group text-center">
+                    <div id="drop-zone" class="flex flex-col items-center justify-center border-2 border-dashed border-dark-600 hover:border-indigo-500/50 bg-dark-900/50 hover:bg-dark-900 rounded-xl p-8 cursor-pointer transition-all duration-300 group text-center">
                         <svg class="w-12 h-12 text-slate-500 group-hover:text-indigo-400 transition-colors mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                        <span class="text-sm font-medium text-slate-300 group-hover:text-white transition-colors">Drop your Excel file here, or <span class="text-indigo-400 underline underline-offset-4">browse</span></span>
+                        <span class="text-sm font-medium text-slate-300 group-hover:text-white transition-colors">Click to browse your Excel file, or <span class="text-indigo-400 underline underline-offset-4">drop it here</span></span>
                         <span class="text-xs text-slate-500 mt-1">Supports .xlsx, .xls, .csv</span>
                         <input type="file" id="excel-file" accept=".xlsx, .xls, .csv" class="hidden">
-                    </label>
+                    </div>
                 </div>
 
                 <!-- Instructions / Template info -->
@@ -192,7 +192,7 @@
     <script>
         let runningOrderData = [];
         let currentLoadedFileName = "";
-        let globalTimeOffset = 0; // Difference between global time API and local system clock
+        let globalTimeOffset = 0;
 
         // DOM Elements
         const setupView = document.getElementById('setup-view');
@@ -232,7 +232,6 @@
             { time: "16:00", rawMinutes: 960, title: "Networking Drinks & Wrap Up", description: "Closing reception" }
         ];
 
-        // Fetch reliable global time from worldtimeapi (fallback to system clock if offline)
         async function syncGlobalTime() {
             try {
                 const response = await fetch('https://worldtimeapi.org/api/ip', { cache: 'no-store' });
@@ -249,12 +248,15 @@
             }
         }
 
-        // Get accurate current date/time using offset
         function getGlobalNow() {
             return new Date(Date.now() + globalTimeOffset);
         }
 
-        // Load Sample Data Handler
+        // Direct click trigger on drop zone to open file browser
+        dropZone.addEventListener('click', () => {
+            fileInput.click();
+        });
+
         loadSampleBtn.addEventListener('click', () => {
             runningOrderData = sampleData;
             currentLoadedFileName = "Sample_Running_Order.xlsx";
@@ -278,6 +280,7 @@
         });
 
         dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
             const dt = e.dataTransfer;
             const files = dt.files;
             if (files.length) {
@@ -411,14 +414,13 @@
             return { formatted: timeStr, minutes: minutes };
         }
 
-        // Launch TV Display
         launchBtn.addEventListener('click', () => {
             if (runningOrderData.length === 0) return;
             setupView.classList.add('hidden');
             displayView.classList.remove('hidden');
             loadedFilenameTag.textContent = currentLoadedFileName;
             queueCount.textContent = `${runningOrderData.length} items`;
-            syncGlobalTime(); // Sync global time on launch
+            syncGlobalTime();
             updateClockAndState();
         });
 
@@ -523,9 +525,7 @@
             runningOrderList.innerHTML = html;
         }
 
-        // Periodically re-sync global time every 5 minutes
         setInterval(syncGlobalTime, 300000);
-        // Run clock update every second
         setInterval(updateClockAndState, 1000);
     </script>
 </body>
