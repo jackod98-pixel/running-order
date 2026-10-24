@@ -277,6 +277,10 @@
         });
 
         function handleFile(file) {
+            // FORCE CLEAR previous data to prevent stale cache/leftovers
+            runningOrderData = [];
+            fileLoadedAlert.classList.add('hidden');
+
             currentLoadedFileName = file.name;
             const reader = new FileReader();
             
