@@ -61,7 +61,7 @@
                     <div id="drop-zone" class="flex flex-col items-center justify-center border-2 border-dashed border-dark-600 hover:border-indigo-500/50 bg-dark-900/50 hover:bg-dark-900 rounded-xl p-8 cursor-pointer transition-all duration-300 group text-center">
                         <svg class="w-12 h-12 text-slate-500 group-hover:text-indigo-400 transition-colors mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                         <span class="text-sm font-medium text-slate-300 group-hover:text-white transition-colors">Click to browse your Excel file, or <span class="text-indigo-400 underline underline-offset-4">drop it here</span></span>
-                        <span class="text-xs text-slate-500 mt-1">Supports .xlsx, .xls, .csv</span>
+                        <span class="text-xs text-slate-500 mt-1">Supports .xlsx, .xls, .csv (Hidden rows ignored)</span>
                         <input type="file" id="excel-file" accept=".xlsx, .xls, .csv" class="hidden">
                     </div>
                 </div>
@@ -80,7 +80,7 @@
                         </li>
                         <li class="flex items-start">
                             <svg class="w-5 h-5 text-indigo-400 mr-2 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                            <span>Auto-detects columns even if headers differ.</span>
+                            <span>Hidden Excel rows are automatically ignored.</span>
                         </li>
                     </ul>
                     <div class="pt-2 flex gap-3">
@@ -252,7 +252,6 @@
             return new Date(Date.now() + globalTimeOffset);
         }
 
-        // Direct click trigger on drop zone to open file browser
         dropZone.addEventListener('click', () => {
             fileInput.click();
         });
@@ -306,7 +305,7 @@
                     const worksheet = workbook.Sheets[firstSheetName];
                     const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
                     
-                    parseExcelJson(json);
+                    parseExcelJson(worksheet, json);
                 } catch (err) {
                     alert("Error reading Excel file. Please ensure it is a valid .xlsx or .csv file.");
                     console.error(err);
@@ -315,10 +314,14 @@
             reader.readAsArrayBuffer(file);
         }
 
-        function parseExcelJson(rows) {
+        function parseExcelJson(worksheet, rows) {
             let parsed = [];
             let timeColIndex = -1;
             let titleColIndex = -1;
+
+            const range = worksheet['!ref'] ? XLSX.utils.decode_range(worksheet['!ref']) : { s: { r: 0 } };
+            const startRow = range.s.r;
+            const rowMeta = worksheet['!rows'] || [];
 
             for (let r = 0; r < Math.min(rows.length, 5); r++) {
                 const row = rows[r];
@@ -346,6 +349,12 @@
             }
 
             for (let i = startIndex; i < rows.length; i++) {
+                const actualRowIndex = startRow + i;
+                // Ignore hidden rows in Excel
+                if (rowMeta[actualRowIndex] && rowMeta[actualRowIndex].hidden) {
+                    continue;
+                }
+
                 const row = rows[i];
                 if (!row || row.length === 0) continue;
                 
