@@ -278,104 +278,75 @@
 
                         if (items.length === 0) continue;
 
-                        // Group text items into horizontal row bands based on vertical position (y)
-                        let rowsMap = {};
-                        for (let item of items) {
-                            let rowY = Math.round(item.y / 10) * 10;
-                            if (!rowsMap[rowY]) rowsMap[rowY] = [];
-                            rowsMap[rowY].push(item);
+                        // Sort items top-to-bottom
+                        let sortedItems = [...items].sort((a, b) => b.y - a.y);
+                        
+                        // Group items into distinct vertical blocks (rows/events) based on vertical gap (< 16 points)
+                        let blocks = [];
+                        let currentBlock = [];
+                        let lastY = null;
+
+                        for (let item of sortedItems) {
+                            if (lastY === null || Math.abs(item.y - lastY) < 16) {
+                                currentBlock.push(item);
+                                if (lastY === null) lastY = item.y;
+                            } else {
+                                if (currentBlock.length > 0) blocks.push(currentBlock);
+                                currentBlock = [item];
+                                lastY = item.y;
+                            }
                         }
+                        if (currentBlock.length > 0) blocks.push(currentBlock);
 
-                        let rowYs = Object.keys(rowsMap).map(Number).sort((a, b) => b - a);
-                        let extractedRows = [];
-
-                        // First pass: extract rows containing a valid timestamp
-                        for (let y of rowYs) {
-                            let rItems = rowsMap[y];
-                            rItems.sort((a, b) => a.x - b.x);
-
+                        // Parse each block independently so rows never merge
+                        for (let block of blocks) {
                             let timeStr = null;
-                            let timeItemX = 0;
-
-                            for (let item of rItems) {
+                            for (let item of block) {
                                 let match = item.str.match(/\b(\d{1,2}[:\.]\d{2}(?:[:\.]\d{2})?)\b/);
                                 if (match) {
                                     timeStr = match[1].replace(/\./g, ':');
-                                    timeItemX = item.x;
                                     break;
                                 }
                             }
 
                             if (timeStr) {
-                                // Collect text for Column 2 (Action/Title), strictly ignoring columns 3 & 4 (X > 250 roughly)
-                                let actionParts = [];
-                                for (let item of rItems) {
-                                    // Filter out time itself, staff initials, and right-hand side notes/responsible columns (X > 260)
-                                    if (item.x < 260 && !item.str.match(/\b\d{1,2}[:\.]\d{2}\b/) && !item.str.match(/^(JD|JS|MB|DJ|CO|MUSIC|LED|SYNC)$/i)) {
-                                        actionParts.push(item);
-                                    }
-                                }
+                                // Extract text items in this block belonging to Column 2 (x < 250), ignoring timestamps, headers, and staff codes
+                                let textParts = block.filter(item => 
+                                    item.x < 250 && 
+                                    !item.str.match(/\b\d{1,2}[:\.]\d{2}\b/) && 
+                                    !item.str.match(/^(JD|JS|MB|DJ|CO|MUSIC|LED|SYNC|PRE-MATCH|HALF\s*TIME)$/i)
+                                );
 
-                                actionParts.sort((a, b) => a.x - b.x);
-                                let actionText = actionParts.map(p => p.str).join(' ').trim();
-                                actionText = actionText.replace(/\s+/g, ' ');
-
-                                if (actionText) {
-                                    const timeData = formatTimeString(timeStr);
-                                    extractedRows.push({
-                                        time: timeData.formatted,
-                                        rawSeconds: timeData.totalSeconds,
-                                        title: actionText,
-                                        description: '',
-                                        y: y
-                                    });
-                                }
-                            }
-                        }
-
-                        // Second pass: Catch any multi-line wrapped text belonging to the row immediately above it
-                        for (let r = 0; r < extractedRows.length; r++) {
-                            let curRow = extractedRows[r];
-                            // Look for unassigned text items between this row and the next row
-                            let nextRowY = (r + 1 < extractedRows.length) ? extractedRows[r+1].y : -1000;
-
-                            let wrapParts = [];
-                            for (let y of rowYs) {
-                                if (y < curRow.y && y > nextRowY && y !== curRow.y) {
-                                    let rItems = rowsMap[y];
-                                    for (let item of rItems) {
-                                        if (item.x < 260 && !item.str.match(/\b\d{1,2}[:\.]\d{2}\b/) && !item.str.match(/^(JD|JS|MB|DJ|CO|MUSIC|LED|SYNC)$/i)) {
-                                            wrapParts.push(item);
-                                        }
-                                    }
-                                }
-                            }
-
-                            if (wrapParts.length > 0) {
-                                wrapParts.sort((a, b) => {
+                                textParts.sort((a, b) => {
                                     if (Math.abs(a.y - b.y) > 4) return b.y - a.y;
                                     return a.x - b.x;
                                 });
-                                let wrapText = wrapParts.map(p => p.str).join(' ').trim();
-                                if (wrapText) {
-                                    curRow.title += ' ' + wrapText;
-                                    curRow.title = curRow.title.replace(/\s+/g, ' ');
+
+                                let titleText = textParts.map(p => p.str).join(' ').trim();
+                                titleText = titleText.replace(/\s+/g, ' ');
+
+                                if (titleText) {
+                                    const timeData = formatTimeString(timeStr);
+                                    parsed.push({
+                                        time: timeData.formatted,
+                                        rawSeconds: timeData.totalSeconds,
+                                        title: titleText,
+                                        description: ''
+                                    });
                                 }
                             }
-
-                            parsed.push(curRow);
                         }
                     }
 
                     parsed.sort((a, b) => a.rawSeconds - b.rawSeconds);
 
-                    // Remove duplicates if any
+                    // Remove exact duplicates
                     let uniqueParsed = [];
-                    let seenTimes = new Set();
+                    let seen = new Set();
                     for (let item of parsed) {
                         let key = item.rawSeconds + '-' + item.title;
-                        if (!seenTimes.has(key)) {
-                            seenTimes.add(key);
+                        if (!seen.has(key)) {
+                            seen.add(key);
                             uniqueParsed.push(item);
                         }
                     }
