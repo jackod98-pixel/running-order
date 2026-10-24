@@ -5,7 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Running Order TV Display</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap');
         body {
@@ -32,7 +35,7 @@
                 <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
             </div>
             <h1 class="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">TV Running Order Display</h1>
-            <p class="mt-2 text-white/80 text-lg">Upload your Excel file to launch the live TV dashboard.</p>
+            <p class="mt-2 text-white/80 text-lg">Upload your PDF running order to launch the live TV dashboard.</p>
         </div>
 
         <div class="w-full bg-black/25 border border-white/20 rounded-2xl p-8 shadow-2xl relative overflow-hidden backdrop-blur-xl">
@@ -43,9 +46,9 @@
                 <div>
                     <div id="drop-zone" class="flex flex-col items-center justify-center border-2 border-dashed border-white/30 hover:border-white bg-black/20 hover:bg-black/30 rounded-xl p-8 cursor-pointer transition-all duration-300 group text-center">
                         <svg class="w-12 h-12 text-white/70 group-hover:text-white transition-colors mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                        <span class="text-sm font-medium text-white/90 group-hover:text-white transition-colors">Click to browse your Excel file, or <span class="underline underline-offset-4 text-white font-semibold">drop it here</span></span>
-                        <span class="text-xs text-white/70 mt-1">Supports .xlsx, .xls, .csv (Hidden rows ignored)</span>
-                        <input type="file" id="excel-file" accept=".xlsx, .xls, .csv" class="hidden">
+                        <span class="text-sm font-medium text-white/90 group-hover:text-white transition-colors">Click to browse your PDF file, or <span class="underline underline-offset-4 text-white font-semibold">drop it here</span></span>
+                        <span class="text-xs text-white/70 mt-1">Supports .pdf files (Rows without times are automatically ignored)</span>
+                        <input type="file" id="pdf-file" accept=".pdf" class="hidden">
                     </div>
                 </div>
             </div>
@@ -169,7 +172,7 @@
         // DOM Elements
         const setupView = document.getElementById('setup-view');
         const displayView = document.getElementById('display-view');
-        const fileInput = document.getElementById('excel-file');
+        const fileInput = document.getElementById('pdf-file');
         const dropZone = document.getElementById('drop-zone');
         const fileLoadedAlert = document.getElementById('file-loaded-alert');
         const fileNameDisplay = document.getElementById('file-name-display');
@@ -254,166 +257,99 @@
         function handleFile(file) {
             runningOrderData = [];
             fileLoadedAlert.classList.add('hidden');
-
             currentLoadedFileName = file.name;
+
             const reader = new FileReader();
-            
-            reader.onload = function(e) {
+            reader.onload = async function(e) {
                 try {
-                    const data = new Uint8Array(e.target.result);
-                    const workbook = XLSX.read(data, { type: 'array' });
-                    const firstSheetName = workbook.SheetNames[0];
-                    const worksheet = workbook.Sheets[firstSheetName];
-                    
-                    parseExcelSheet(worksheet);
+                    const typedarray = new Uint8Array(e.target.result);
+                    const pdf = await pdfjsLib.getDocument({ data: typedarray }).promise;
+                    let parsed = [];
+
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        const page = await pdf.getPage(i);
+                        const textContent = await page.getTextContent();
+                        
+                        let items = textContent.items.map(item => ({
+                            str: item.str.trim(),
+                            x: item.transform[4],
+                            y: item.transform[5]
+                        }));
+
+                        // Sort vertically top-to-bottom, then left-to-right
+                        items.sort((a, b) => {
+                            if (Math.abs(a.y - b.y) > 5) {
+                                return b.y - a.y;
+                            }
+                            return a.x - b.x;
+                        });
+
+                        let lines = [];
+                        let currentLine = '';
+                        let lastY = null;
+                        
+                        for (let item of items) {
+                            if (!item.str) continue;
+                            if (lastY === null || Math.abs(item.y - lastY) > 5) {
+                                if (currentLine) lines.push(currentLine.trim());
+                                currentLine = item.str;
+                                lastY = item.y;
+                            } else {
+                                currentLine += ' ' + item.str;
+                            }
+                        }
+                        if (currentLine) lines.push(currentLine.trim());
+
+                        // Parse lines for time stamps. ANY line without a time is automatically ignored!
+                        for (let line of lines) {
+                            const timeMatch = line.match(/\b(\d{1,2}[:\.]\d{2}(?:[:\.]\d{2})?)\b/);
+                            if (timeMatch) {
+                                const timeStr = timeMatch[1].replace(/\./g, ':');
+                                let titleStr = line.replace(timeMatch[0], '').trim();
+                                titleStr = titleStr.replace(/^[-–—:\s]+|[-–—:\s]+$/g, '');
+                                
+                                if (titleStr) {
+                                    const timeData = formatTimeString(timeStr);
+                                    parsed.push({
+                                        time: timeData.formatted,
+                                        rawSeconds: timeData.totalSeconds,
+                                        title: titleStr,
+                                        description: ''
+                                    });
+                                }
+                            }
+                        }
+                    }
+
+                    parsed.sort((a, b) => a.rawSeconds - b.rawSeconds);
+
+                    if (parsed.length > 0) {
+                        runningOrderData = parsed;
+                        fileNameDisplay.textContent = `${currentLoadedFileName} (${runningOrderData.length} segments loaded)`;
+                        fileLoadedAlert.classList.remove('hidden');
+                    } else {
+                        alert("Could not find any lines with times in this PDF. Please ensure the PDF contains clear time stamps (e.g. 13:30:00).");
+                    }
                 } catch (err) {
-                    alert("Error reading Excel file. Please ensure it is a valid .xlsx or .csv file.");
+                    alert("Error reading PDF file.");
                     console.error(err);
                 }
             };
             reader.readAsArrayBuffer(file);
         }
 
-        function parseExcelSheet(worksheet) {
-            let parsed = [];
-            if (!worksheet['!ref']) {
-                alert("The selected sheet is empty.");
-                return;
-            }
-
-            const range = XLSX.utils.decode_range(worksheet['!ref']);
-            const rowMeta = worksheet['!rows'] || [];
-
-            // 1. Locate Time column
-            let timeColIndex = 0;
-            for (let R = range.s.r; R <= Math.min(range.s.r + 5, range.e.r); ++R) {
-                for (let C = range.s.c; C <= range.e.c; ++C) {
-                    const cell = worksheet[XLSX.utils.encode_cell({r: R, c: C})];
-                    if (cell && cell.v) {
-                        const val = cell.v.toString().toLowerCase().trim();
-                        if (val.includes('time') || val.includes('start') || val.includes('hour')) {
-                            timeColIndex = C;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            // 2. Locate Title column (smart check: look for header keyword or first non-numeric text column after time)
-            let titleColIndex = -1;
-            for (let R = range.s.r; R <= Math.min(range.s.r + 5, range.e.r); ++R) {
-                for (let C = range.s.c; C <= range.e.c; ++C) {
-                    const cell = worksheet[XLSX.utils.encode_cell({r: R, c: C})];
-                    if (cell && cell.v) {
-                        const val = cell.v.toString().toLowerCase().trim();
-                        if (val.includes('title') || val.includes('segment') || val.includes('item') || val.includes('activity') || val.includes('description') || val.includes('event')) {
-                            titleColIndex = C;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if (titleColIndex === -1) {
-                // Search for the first column after time that contains actual text strings (not numbers/durations)
-                for (let C = timeColIndex + 1; C <= range.e.c; ++C) {
-                    let hasText = false;
-                    for (let R = range.s.r + 1; R <= Math.min(range.s.r + 10, range.e.r); ++R) {
-                        const cell = worksheet[XLSX.utils.encode_cell({r: R, c: C})];
-                        if (cell && cell.v !== undefined && typeof cell.v === 'string' && isNaN(cell.v) && cell.v.trim().length > 0) {
-                            hasText = true;
-                            break;
-                        }
-                    }
-                    if (hasText) {
-                        titleColIndex = C;
-                        break;
-                    }
-                }
-                if (titleColIndex === -1) {
-                    titleColIndex = timeColIndex + 1;
-                }
-            }
-
-            // 3. Check if the first row is a header row
-            let startR = range.s.r;
-            const headerCell = worksheet[XLSX.utils.encode_cell({r: startR, c: timeColIndex})];
-            if (headerCell && headerCell.v) {
-                const val = headerCell.v.toString().toLowerCase();
-                if (val.includes('time') || val.includes('start') || val.includes('hour')) {
-                    startR++;
-                }
-            }
-
-            // 4. Directly iterate through absolute row coordinates in the worksheet
-            for (let R = startR; R <= range.e.r; ++R) {
-                // Strictly check Excel's manual hidden row flags
-                const meta = rowMeta[R];
-                if (meta && (meta.hidden || meta.collapsed || meta.hpx === 0 || meta.hpt === 0)) {
-                    continue; // Skip hidden row entirely
-                }
-
-                const timeCell = worksheet[XLSX.utils.encode_cell({r: R, c: timeColIndex})];
-                const titleCell = worksheet[XLSX.utils.encode_cell({r: R, c: titleColIndex})];
-
-                let rawTime = timeCell ? timeCell.v : undefined;
-                let rawTitle = titleCell ? titleCell.v : undefined;
-
-                if (rawTime !== undefined && rawTime !== '' && rawTitle !== undefined && rawTitle !== '') {
-                    const timeData = formatTimeString(rawTime);
-                    const titleStr = rawTitle.toString().trim();
-                    if (titleStr) {
-                        const descCell = worksheet[XLSX.utils.encode_cell({r: R, c: titleColIndex + 1})];
-                        parsed.push({
-                            time: timeData.formatted,
-                            rawSeconds: timeData.totalSeconds,
-                            title: titleStr,
-                            description: descCell && descCell.v ? descCell.v.toString().trim() : ''
-                        });
-                    }
-                }
-            }
-
-            parsed.sort((a, b) => a.rawSeconds - b.rawSeconds);
-
-            if (parsed.length > 0) {
-                runningOrderData = parsed;
-                fileNameDisplay.textContent = `${currentLoadedFileName} (${runningOrderData.length} segments loaded)`;
-                fileLoadedAlert.classList.remove('hidden');
-            } else {
-                alert("Could not detect valid running order rows. Please check your Excel layout.");
-            }
-        }
-
         function formatTimeString(raw) {
+            let str = raw.toString().trim();
+            const match = str.match(/(\d{1,2})[:\.]([0-5]\d)(?:[:\.]([0-5]\d))?/);
             let totalSeconds = 0;
             let timeStr = "00:00:00";
 
-            if (typeof raw === 'number') {
-                totalSeconds = Math.round(raw * 24 * 60 * 60);
-                const hrs = Math.floor(totalSeconds / 3600) % 24;
-                const mins = Math.floor((totalSeconds % 3600) / 60);
-                const secs = totalSeconds % 60;
-                timeStr = `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-            } else {
-                let str = raw.toString().trim();
-                const match = str.match(/(\d{1,2})[:\.]([0-5]\d)(?:[:\.]([0-5]\d))?(\s*[ap]m)?/i);
-                if (match) {
-                    let h = parseInt(match[1], 10);
-                    let m = parseInt(match[2], 10);
-                    let s = match[3] ? parseInt(match[3], 10) : 0;
-                    let ampm = match[4] ? match[4].toLowerCase() : '';
-                    if (ampm.includes('p') && h < 12) h += 12;
-                    if (ampm.includes('a') && h === 12) h = 0;
-                    totalSeconds = h * 3600 + m * 60 + s;
-                    timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-                } else {
-                    let num = parseInt(str, 10);
-                    if (!isNaN(num)) {
-                        totalSeconds = num * 3600;
-                        timeStr = `${String(num).padStart(2, '0')}:00:00`;
-                    }
-                }
+            if (match) {
+                let h = parseInt(match[1], 10);
+                let m = parseInt(match[2], 10);
+                let s = match[3] ? parseInt(match[3], 10) : 0;
+                totalSeconds = h * 3600 + m * 60 + s;
+                timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
             }
             return { formatted: timeStr, totalSeconds: totalSeconds };
         }
