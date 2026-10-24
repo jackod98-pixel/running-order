@@ -47,7 +47,7 @@
                     <div id="drop-zone" class="flex flex-col items-center justify-center border-2 border-dashed border-white/30 hover:border-white bg-black/20 hover:bg-black/30 rounded-xl p-8 cursor-pointer transition-all duration-300 group text-center">
                         <svg class="w-12 h-12 text-white/70 group-hover:text-white transition-colors mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                         <span class="text-sm font-medium text-white/90 group-hover:text-white transition-colors">Click to browse your PDF file, or <span class="underline underline-offset-4 text-white font-semibold">drop it here</span></span>
-                        <span class="text-xs text-white/70 mt-1">Supports .pdf files (Columns 3 & 4 strictly blocked out)</span>
+                        <span class="text-xs text-white/70 mt-1">Supports .pdf files (Columns 3 & 4 strictly ignored)</span>
                         <input type="file" id="pdf-file" accept=".pdf" class="hidden">
                     </div>
                 </div>
@@ -278,83 +278,110 @@
 
                         if (items.length === 0) continue;
 
-                        // 1. Detect Column X clusters across the page
-                        let allX = items.map(item => item.x).sort((a, b) => a - b);
-                        let colClusters = [];
-                        let curCluster = [allX[0]];
-                        for (let k = 1; k < allX.length; k++) {
-                            if (allX[k] - allX[k-1] < 35) {
-                                curCluster.push(allX[k]);
-                            } else {
-                                colClusters.push(curCluster.reduce((a, b) => a + b, 0) / curCluster.length);
-                                curCluster = [allX[k]];
-                            }
-                        }
-                        colClusters.push(curCluster.reduce((a, b) => a + b, 0) / curCluster.length);
-                        colClusters.sort((a, b) => a - b);
-
-                        let timeColX = colClusters[0] || 40;
-                        let titleMinX = colClusters.length > 1 ? colClusters[1] - 30 : timeColX + 30;
-                        // Strict column wall: stop right before Column 3 to completely ignore columns 3 and 4!
-                        let titleMaxX = colClusters.length > 2 ? colClusters[2] - 20 : 10000;
-
-                        // 2. Find all timestamps in Column 1
-                        let timeItems = [];
+                        // Group text items into horizontal row bands based on vertical position (y)
+                        let rowsMap = {};
                         for (let item of items) {
-                            if (Math.abs(item.x - timeColX) < 45) {
-                                const timeMatch = item.str.match(/\b(\d{1,2}[:\.]\d{2}(?:[:\.]\d{2})?)\b/);
-                                if (timeMatch) {
-                                    timeItems.push({
-                                        str: timeMatch[1].replace(/\./g, ':'),
-                                        x: item.x,
-                                        y: item.y
+                            let rowY = Math.round(item.y / 10) * 10;
+                            if (!rowsMap[rowY]) rowsMap[rowY] = [];
+                            rowsMap[rowY].push(item);
+                        }
+
+                        let rowYs = Object.keys(rowsMap).map(Number).sort((a, b) => b - a);
+                        let extractedRows = [];
+
+                        // First pass: extract rows containing a valid timestamp
+                        for (let y of rowYs) {
+                            let rItems = rowsMap[y];
+                            rItems.sort((a, b) => a.x - b.x);
+
+                            let timeStr = null;
+                            let timeItemX = 0;
+
+                            for (let item of rItems) {
+                                let match = item.str.match(/\b(\d{1,2}[:\.]\d{2}(?:[:\.]\d{2})?)\b/);
+                                if (match) {
+                                    timeStr = match[1].replace(/\./g, ':');
+                                    timeItemX = item.x;
+                                    break;
+                                }
+                            }
+
+                            if (timeStr) {
+                                // Collect text for Column 2 (Action/Title), strictly ignoring columns 3 & 4 (X > 250 roughly)
+                                let actionParts = [];
+                                for (let item of rItems) {
+                                    // Filter out time itself, staff initials, and right-hand side notes/responsible columns (X > 260)
+                                    if (item.x < 260 && !item.str.match(/\b\d{1,2}[:\.]\d{2}\b/) && !item.str.match(/^(JD|JS|MB|DJ|CO|MUSIC|LED|SYNC)$/i)) {
+                                        actionParts.push(item);
+                                    }
+                                }
+
+                                actionParts.sort((a, b) => a.x - b.x);
+                                let actionText = actionParts.map(p => p.str).join(' ').trim();
+                                actionText = actionText.replace(/\s+/g, ' ');
+
+                                if (actionText) {
+                                    const timeData = formatTimeString(timeStr);
+                                    extractedRows.push({
+                                        time: timeData.formatted,
+                                        rawSeconds: timeData.totalSeconds,
+                                        title: actionText,
+                                        description: '',
+                                        y: y
                                     });
                                 }
                             }
                         }
 
-                        // Sort timestamps top-to-bottom
-                        timeItems.sort((a, b) => b.y - a.y);
+                        // Second pass: Catch any multi-line wrapped text belonging to the row immediately above it
+                        for (let r = 0; r < extractedRows.length; r++) {
+                            let curRow = extractedRows[r];
+                            // Look for unassigned text items between this row and the next row
+                            let nextRowY = (r + 1 < extractedRows.length) ? extractedRows[r+1].y : -1000;
 
-                        // 3. For each timestamp, capture Column 2 cell text up to the column 3 wall
-                        for (let r = 0; r < timeItems.length; r++) {
-                            let currentTime = timeItems[r];
-                            let yTop = currentTime.y + 20;
-                            let yBottom = (r + 1 < timeItems.length) ? timeItems[r + 1].y + 10 : -1000;
-
-                            let cellItems = items.filter(item => 
-                                item.y >= yBottom && 
-                                item.y < yTop && 
-                                item.x >= titleMinX && 
-                                item.x < titleMaxX
-                            );
-
-                            cellItems.sort((a, b) => {
-                                if (Math.abs(a.y - b.y) > 4) {
-                                    return b.y - a.y;
+                            let wrapParts = [];
+                            for (let y of rowYs) {
+                                if (y < curRow.y && y > nextRowY && y !== curRow.y) {
+                                    let rItems = rowsMap[y];
+                                    for (let item of rItems) {
+                                        if (item.x < 260 && !item.str.match(/\b\d{1,2}[:\.]\d{2}\b/) && !item.str.match(/^(JD|JS|MB|DJ|CO|MUSIC|LED|SYNC)$/i)) {
+                                            wrapParts.push(item);
+                                        }
+                                    }
                                 }
-                                return a.x - b.x;
-                            });
-
-                            let fullCellText = cellItems.map(item => item.str).join(' ').trim();
-                            fullCellText = fullCellText.replace(/\s+/g, ' ');
-
-                            if (fullCellText) {
-                                const timeData = formatTimeString(currentTime.str);
-                                parsed.push({
-                                    time: timeData.formatted,
-                                    rawSeconds: timeData.totalSeconds,
-                                    title: fullCellText,
-                                    description: ''
-                                });
                             }
+
+                            if (wrapParts.length > 0) {
+                                wrapParts.sort((a, b) => {
+                                    if (Math.abs(a.y - b.y) > 4) return b.y - a.y;
+                                    return a.x - b.x;
+                                });
+                                let wrapText = wrapParts.map(p => p.str).join(' ').trim();
+                                if (wrapText) {
+                                    curRow.title += ' ' + wrapText;
+                                    curRow.title = curRow.title.replace(/\s+/g, ' ');
+                                }
+                            }
+
+                            parsed.push(curRow);
                         }
                     }
 
                     parsed.sort((a, b) => a.rawSeconds - b.rawSeconds);
 
-                    if (parsed.length > 0) {
-                        runningOrderData = parsed;
+                    // Remove duplicates if any
+                    let uniqueParsed = [];
+                    let seenTimes = new Set();
+                    for (let item of parsed) {
+                        let key = item.rawSeconds + '-' + item.title;
+                        if (!seenTimes.has(key)) {
+                            seenTimes.add(key);
+                            uniqueParsed.push(item);
+                        }
+                    }
+
+                    if (uniqueParsed.length > 0) {
+                        runningOrderData = uniqueParsed;
                         fileNameDisplay.textContent = `${currentLoadedFileName} (${runningOrderData.length} segments loaded)`;
                         fileLoadedAlert.classList.remove('hidden');
                     } else {
