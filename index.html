@@ -284,10 +284,8 @@
             const range = XLSX.utils.decode_range(worksheet['!ref']);
             const rowMeta = worksheet['!rows'] || [];
 
-            // 1. Automatically locate Time and Title columns by scanning top rows
-            let timeColIndex = 0;   // Default Column A
-            let titleColIndex = 1;  // Default Column B
-
+            // 1. Locate Time column
+            let timeColIndex = 0;
             for (let R = range.s.r; R <= Math.min(range.s.r + 5, range.e.r); ++R) {
                 for (let C = range.s.c; C <= range.e.c; ++C) {
                     const cell = worksheet[XLSX.utils.encode_cell({r: R, c: C})];
@@ -295,15 +293,49 @@
                         const val = cell.v.toString().toLowerCase().trim();
                         if (val.includes('time') || val.includes('start') || val.includes('hour')) {
                             timeColIndex = C;
-                        }
-                        if (val.includes('title') || val.includes('segment') || val.includes('item') || val.includes('activity') || val.includes('description') || val.includes('event')) {
-                            titleColIndex = C;
+                            break;
                         }
                     }
                 }
             }
 
-            // 2. Check if the very first row is a header row
+            // 2. Locate Title column (smart check: look for header keyword or first non-numeric text column after time)
+            let titleColIndex = -1;
+            for (let R = range.s.r; R <= Math.min(range.s.r + 5, range.e.r); ++R) {
+                for (let C = range.s.c; C <= range.e.c; ++C) {
+                    const cell = worksheet[XLSX.utils.encode_cell({r: R, c: C})];
+                    if (cell && cell.v) {
+                        const val = cell.v.toString().toLowerCase().trim();
+                        if (val.includes('title') || val.includes('segment') || val.includes('item') || val.includes('activity') || val.includes('description') || val.includes('event')) {
+                            titleColIndex = C;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (titleColIndex === -1) {
+                // Search for the first column after time that contains actual text strings (not numbers/durations)
+                for (let C = timeColIndex + 1; C <= range.e.c; ++C) {
+                    let hasText = false;
+                    for (let R = range.s.r + 1; R <= Math.min(range.s.r + 10, range.e.r); ++R) {
+                        const cell = worksheet[XLSX.utils.encode_cell({r: R, c: C})];
+                        if (cell && cell.v !== undefined && typeof cell.v === 'string' && isNaN(cell.v) && cell.v.trim().length > 0) {
+                            hasText = true;
+                            break;
+                        }
+                    }
+                    if (hasText) {
+                        titleColIndex = C;
+                        break;
+                    }
+                }
+                if (titleColIndex === -1) {
+                    titleColIndex = timeColIndex + 1;
+                }
+            }
+
+            // 3. Check if the first row is a header row
             let startR = range.s.r;
             const headerCell = worksheet[XLSX.utils.encode_cell({r: startR, c: timeColIndex})];
             if (headerCell && headerCell.v) {
@@ -313,7 +345,7 @@
                 }
             }
 
-            // 3. Directly iterate through absolute row coordinates in the worksheet
+            // 4. Directly iterate through absolute row coordinates in the worksheet
             for (let R = startR; R <= range.e.r; ++R) {
                 // Strictly check Excel's manual hidden row flags
                 const meta = rowMeta[R];
@@ -326,14 +358,6 @@
 
                 let rawTime = timeCell ? timeCell.v : undefined;
                 let rawTitle = titleCell ? titleCell.v : undefined;
-
-                // Fallback to Column A and B if primary columns are blank
-                if ((rawTime === undefined || rawTime === '') && timeColIndex !== 0) {
-                    const fbTime = worksheet[XLSX.utils.encode_cell({r: R, c: 0})];
-                    const fbTitle = worksheet[XLSX.utils.encode_cell({r: R, c: 1})];
-                    rawTime = fbTime ? fbTime.v : undefined;
-                    rawTitle = fbTitle ? fbTitle.v : undefined;
-                }
 
                 if (rawTime !== undefined && rawTime !== '' && rawTitle !== undefined && rawTitle !== '') {
                     const timeData = formatTimeString(rawTime);
