@@ -278,12 +278,12 @@
 
                         if (items.length === 0) continue;
 
-                        // 1. Find X coordinate clusters across the page to identify columns
+                        // 1. Cluster X coordinates to find column positions across the page
                         let allX = items.map(item => item.x).sort((a, b) => a - b);
                         let xClusters = [];
                         let currentCluster = [allX[0]];
                         for (let k = 1; k < allX.length; k++) {
-                            if (allX[k] - allX[k-1] < 25) {
+                            if (allX[k] - allX[k-1] < 30) {
                                 currentCluster.push(allX[k]);
                             } else {
                                 let avgX = currentCluster.reduce((a, b) => a + b, 0) / currentCluster.length;
@@ -294,15 +294,15 @@
                         let avgX = currentCluster.reduce((a, b) => a + b, 0) / currentCluster.length;
                         xClusters.push(avgX);
 
-                        // Column 0 = Time, Column 1 = Title/Description. Columns 2+ (3rd and 4th columns) are ignored.
-                        let timeColX = xClusters[0] || 50;
-                        let titleColMinX = xClusters.length > 1 ? (xClusters[0] + xClusters[1]) / 2 : timeColX + 20;
-                        let titleColMaxX = xClusters.length > 2 ? (xClusters[1] + xClusters[2]) / 2 : 10000;
+                        let timeColX = xClusters[0] || 40;
+                        let titleMinX = xClusters.length > 1 ? (xClusters[0] + xClusters[1]) / 2 : timeColX + 30;
+                        // Cut off right before the 3rd column to ignore columns 3 and 4 entirely
+                        let maxX = xClusters.length > 2 ? (xClusters[1] + xClusters[2]) / 2 : 10000;
 
-                        // 2. Find all timestamp items in the Time column
+                        // 2. Find all timestamp items
                         let timeItems = [];
                         for (let item of items) {
-                            if (Math.abs(item.x - timeColX) < 35) {
+                            if (Math.abs(item.x - timeColX) < 50) {
                                 const timeMatch = item.str.match(/\b(\d{1,2}[:\.]\d{2}(?:[:\.]\d{2})?)\b/);
                                 if (timeMatch) {
                                     timeItems.push({
@@ -317,19 +317,20 @@
                         // Sort timestamps top-to-bottom
                         timeItems.sort((a, b) => b.y - a.y);
 
-                        // 3. For each timestamp row, collect ALL text in the Title column cell within its vertical band
+                        // 3. For each timestamp, capture ALL text within its vertical row band and the Title column width
                         for (let r = 0; r < timeItems.length; r++) {
                             let currentTime = timeItems[r];
-                            let yTop = currentTime.y + 18;
-                            let yBottom = (r + 1 < timeItems.length) ? timeItems[r + 1].y + 10 : -1000;
+                            let yTop = currentTime.y + 22;
+                            let yBottom = (r + 1 < timeItems.length) ? timeItems[r + 1].y + 12 : -1000;
 
                             let cellItems = items.filter(item => 
                                 item.y >= yBottom && 
                                 item.y < yTop && 
-                                item.x >= titleColMinX && 
-                                item.x < titleColMaxX
+                                item.x >= titleMinX && 
+                                item.x < maxX
                             );
 
+                            // Sort cell text fragments top-to-bottom, left-to-right
                             cellItems.sort((a, b) => {
                                 if (Math.abs(a.y - b.y) > 4) {
                                     return b.y - a.y;
@@ -337,15 +338,15 @@
                                 return a.x - b.x;
                             });
 
-                            let fullTitle = cellItems.map(item => item.str).join(' ').trim();
-                            fullTitle = fullTitle.replace(/\s+/g, ' ');
+                            let fullCellText = cellItems.map(item => item.str).join(' ').trim();
+                            fullCellText = fullCellText.replace(/\s+/g, ' ');
 
-                            if (fullTitle) {
+                            if (fullCellText) {
                                 const timeData = formatTimeString(currentTime.str);
                                 parsed.push({
                                     time: timeData.formatted,
                                     rawSeconds: timeData.totalSeconds,
-                                    title: fullTitle,
+                                    title: fullCellText,
                                     description: ''
                                 });
                             }
