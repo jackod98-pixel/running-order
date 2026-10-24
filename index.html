@@ -350,8 +350,10 @@
 
             for (let i = startIndex; i < rows.length; i++) {
                 const actualRowIndex = startRow + i;
-                // Ignore hidden rows in Excel
-                if (rowMeta[actualRowIndex] && rowMeta[actualRowIndex].hidden) {
+                const meta = rowMeta[actualRowIndex];
+                
+                // Skip hidden rows or rows explicitly set to 0 height in Excel
+                if (meta && (meta.hidden || meta.hpx === 0 || meta.hpt === 0)) {
                     continue;
                 }
 
