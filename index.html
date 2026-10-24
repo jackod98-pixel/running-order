@@ -6,23 +6,6 @@
     <title>Running Order TV Display</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        dark: {
-                            900: '#d7172f',
-                            800: '#bd1328',
-                            700: '#a30f21',
-                            600: '#8a0a1a',
-                        }
-                    }
-                }
-            }
-        }
-    </script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap');
         body {
@@ -40,28 +23,28 @@
         }
     </style>
 </head>
-<body class="bg-dark-900 text-slate-100 min-h-screen flex flex-col selection:bg-indigo-500 selection:text-white">
+<body style="background-color: #d7172f;" class="text-slate-100 min-h-screen flex flex-col selection:bg-white selection:text-[#d7172f]">
 
     <!-- SETUP VIEW -->
     <div id="setup-view" class="flex-1 flex flex-col items-center justify-center p-6 max-w-4xl mx-auto w-full">
         <div class="text-center mb-8">
-            <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-black/20 text-white mb-4 border border-white/20 shadow-lg shadow-black/10">
+            <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-black/20 text-white mb-4 border border-white/20 shadow-lg">
                 <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
             </div>
             <h1 class="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">TV Running Order Display</h1>
             <p class="mt-2 text-white/80 text-lg">Upload your Excel file with times and segments to launch the live TV dashboard.</p>
         </div>
 
-        <div class="w-full bg-dark-800 border border-dark-600 rounded-2xl p-8 shadow-2xl relative overflow-hidden backdrop-blur-xl">
-            <div class="absolute -right-20 -top-20 w-64 h-64 bg-black/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="w-full bg-black/25 border border-white/20 rounded-2xl p-8 shadow-2xl relative overflow-hidden backdrop-blur-xl">
+            <div class="absolute -right-20 -top-20 w-64 h-64 bg-white/5 rounded-full blur-3xl pointer-events-none"></div>
             
             <div class="grid md:grid-cols-2 gap-8 items-center">
                 <!-- Drop Zone -->
                 <div>
-                    <div id="drop-zone" class="flex flex-col items-center justify-center border-2 border-dashed border-dark-600 hover:border-white/50 bg-dark-900/50 hover:bg-dark-900 rounded-xl p-8 cursor-pointer transition-all duration-300 group text-center">
+                    <div id="drop-zone" class="flex flex-col items-center justify-center border-2 border-dashed border-white/30 hover:border-white bg-black/20 hover:bg-black/30 rounded-xl p-8 cursor-pointer transition-all duration-300 group text-center">
                         <svg class="w-12 h-12 text-white/70 group-hover:text-white transition-colors mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                         <span class="text-sm font-medium text-white/90 group-hover:text-white transition-colors">Click to browse your Excel file, or <span class="underline underline-offset-4 text-white font-semibold">drop it here</span></span>
-                        <span class="text-xs text-white/70 mt-1">Supports .xlsx, .xls, .csv (Spare/skip rows ignored)</span>
+                        <span class="text-xs text-white/70 mt-1">Supports .xlsx, .xls, .csv (Hidden rows ignored)</span>
                         <input type="file" id="excel-file" accept=".xlsx, .xls, .csv" class="hidden">
                     </div>
                 </div>
@@ -80,11 +63,11 @@
                         </li>
                         <li class="flex items-start">
                             <svg class="w-5 h-5 text-white mr-2 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                            <span>Rows marked as spare, skip, or hold are automatically ignored.</span>
+                            <span>Manually hidden Excel rows are automatically ignored.</span>
                         </li>
                     </ul>
                     <div class="pt-2 flex gap-3">
-                        <button id="load-sample-btn" class="px-4 py-2 bg-dark-700 hover:bg-dark-600 text-white text-sm font-medium rounded-lg border border-dark-600 transition-colors flex items-center gap-2 shadow-md">
+                        <button id="load-sample-btn" class="px-4 py-2 bg-black/30 hover:bg-black/50 text-white text-sm font-medium rounded-lg border border-white/20 transition-colors flex items-center gap-2 shadow-md">
                             <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
                             Load Sample Running Order
                         </button>
@@ -92,12 +75,12 @@
                 </div>
             </div>
 
-            <div id="file-loaded-alert" class="hidden mt-6 p-4 bg-black/20 border border-white/20 rounded-xl flex items-center justify-between">
+            <div id="file-loaded-alert" class="hidden mt-6 p-4 bg-black/30 border border-white/20 rounded-xl flex items-center justify-between">
                 <div class="flex items-center space-x-3">
                     <div class="w-2.5 h-2.5 rounded-full bg-white animate-pulse"></div>
                     <span id="file-name-display" class="text-sm font-medium text-white"></span>
                 </div>
-                <button id="launch-btn" class="px-6 py-2.5 bg-white hover:bg-slate-100 text-[#d7172f] font-bold rounded-lg shadow-lg shadow-black/20 transition-all transform hover:scale-[1.02] flex items-center gap-2">
+                <button id="launch-btn" class="px-6 py-2.5 bg-white hover:bg-slate-100 text-[#d7172f] font-bold rounded-lg shadow-lg transition-all transform hover:scale-[1.02] flex items-center gap-2">
                     Launch TV Display
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
                 </button>
@@ -106,11 +89,11 @@
     </div>
 
     <!-- TV DISPLAY VIEW -->
-    <div id="display-view" class="hidden flex-1 flex flex-col h-screen overflow-hidden bg-dark-900">
+    <div id="display-view" class="hidden flex-1 flex flex-col h-screen overflow-hidden" style="background-color: #d7172f;">
         <!-- Top Status Bar -->
-        <header class="bg-dark-800 border-b border-dark-600 px-8 py-4 flex items-center justify-between shrink-0 shadow-md">
+        <header class="bg-black/30 border-b border-white/20 px-8 py-4 flex items-center justify-between shrink-0 shadow-md">
             <div class="flex items-center space-x-4">
-                <div class="flex items-center space-x-2 bg-dark-700 px-3 py-1.5 rounded-lg border border-dark-600">
+                <div class="flex items-center space-x-2 bg-black/20 px-3 py-1.5 rounded-lg border border-white/20">
                     <div class="w-2.5 h-2.5 rounded-full bg-white animate-ping"></div>
                     <span id="event-title" class="text-xs font-semibold uppercase tracking-wider text-white">LIVE RUNNING ORDER</span>
                 </div>
@@ -121,15 +104,15 @@
                 <!-- Clock -->
                 <div class="text-2xl font-mono font-bold tracking-wider text-white flex items-center gap-2">
                     <span id="live-clock">00:00:00</span>
-                    <span id="time-source-badge" class="text-[10px] font-sans px-1.5 py-0.5 rounded bg-black/30 text-white border border-white/20 uppercase tracking-widest">Global UTC</span>
+                    <span id="time-source-badge" class="text-[10px] font-sans px-1.5 py-0.5 rounded bg-black/40 text-white border border-white/20 uppercase tracking-widest">Global UTC</span>
                 </div>
                 
                 <!-- Controls -->
-                <div class="flex items-center space-x-2 border-l border-dark-600 pl-6">
-                    <button id="fullscreen-btn" title="Toggle Fullscreen" class="p-2 text-white/80 hover:text-white bg-dark-700 hover:bg-dark-600 rounded-lg transition-colors">
+                <div class="flex items-center space-x-2 border-l border-white/20 pl-6">
+                    <button id="fullscreen-btn" title="Toggle Fullscreen" class="p-2 text-white/80 hover:text-white bg-black/20 hover:bg-black/40 rounded-lg transition-colors">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-5V4m0 0h-4m4 4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>
                     </button>
-                    <button id="exit-display-btn" title="Back to Setup" class="p-2 text-white/80 hover:text-white bg-dark-700 hover:bg-dark-600 rounded-lg transition-colors">
+                    <button id="exit-display-btn" title="Back to Setup" class="p-2 text-white/80 hover:text-white bg-black/20 hover:bg-black/40 rounded-lg transition-colors">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
                     </button>
                 </div>
@@ -139,7 +122,7 @@
         <!-- Main TV Content Grid -->
         <main class="flex-1 grid grid-cols-1 lg:grid-cols-12 overflow-hidden">
             <!-- Left Side: Current & Next 50/50 Split Cards (7 Cols) -->
-            <div class="lg:col-span-7 p-6 lg:p-8 flex flex-col gap-6 overflow-y-auto border-r border-dark-600 bg-gradient-to-br from-dark-900 to-dark-800">
+            <div class="lg:col-span-7 p-6 lg:p-8 flex flex-col gap-6 overflow-y-auto border-r border-white/20 bg-gradient-to-br from-[#d7172f] to-[#bd1328]">
                 
                 <!-- NOW ON STAGE / SCREEN (50% Height) -->
                 <div class="flex-1 flex flex-col min-h-0">
@@ -147,11 +130,11 @@
                         <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold uppercase tracking-widest bg-white text-[#d7172f] border border-white/40 shadow-sm animate-pulse-subtle">
                             <span class="w-2 h-2 rounded-full bg-[#d7172f] mr-2"></span> NOW ON STAGE / SCREEN
                         </span>
-                        <span id="current-time-badge" class="font-mono text-xl font-bold text-white bg-dark-800 px-3 py-1 rounded-lg border border-dark-600 shadow-inner">--:--</span>
+                        <span id="current-time-badge" class="font-mono text-xl font-bold text-white bg-black/30 px-3 py-1 rounded-lg border border-white/20 shadow-inner">--:--</span>
                     </div>
 
-                    <div id="current-segment-card" class="flex-1 bg-dark-800 border-2 border-white/30 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden backdrop-blur-md flex flex-col justify-center">
-                        <div class="absolute top-0 right-0 w-48 h-48 bg-black/10 rounded-full blur-3xl pointer-events-none"></div>
+                    <div id="current-segment-card" class="flex-1 bg-black/30 border-2 border-white/40 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden backdrop-blur-md flex flex-col justify-center">
+                        <div class="absolute top-0 right-0 w-48 h-48 bg-white/5 rounded-full blur-3xl pointer-events-none"></div>
                         <h2 id="current-segment-title" class="text-3xl sm:text-4xl lg:text-5xl font-black text-white tracking-tight leading-tight">Waiting for start...</h2>
                         <p id="current-segment-desc" class="mt-3 text-base sm:text-lg text-white/80 hidden"></p>
                     </div>
@@ -163,10 +146,10 @@
                         <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold uppercase tracking-widest bg-black/20 text-white border border-white/20">
                             UP NEXT
                         </span>
-                        <span id="next-time-badge" class="font-mono text-lg font-semibold text-white/90 bg-dark-800 px-3 py-1 rounded-lg border border-dark-600">--:--</span>
+                        <span id="next-time-badge" class="font-mono text-lg font-semibold text-white/90 bg-black/30 px-3 py-1 rounded-lg border border-white/20">--:--</span>
                     </div>
 
-                    <div id="next-segment-card" class="flex-1 bg-dark-800/60 border border-dark-600 rounded-3xl p-6 sm:p-8 shadow-xl relative overflow-hidden backdrop-blur-md flex flex-col justify-center">
+                    <div id="next-segment-card" class="flex-1 bg-black/20 border border-white/20 rounded-3xl p-6 sm:p-8 shadow-xl relative overflow-hidden backdrop-blur-md flex flex-col justify-center">
                         <h3 id="next-segment-title" class="text-2xl sm:text-3xl font-bold text-white tracking-tight">--</h3>
                         <p id="next-segment-desc" class="mt-2 text-sm sm:text-base text-white/70 hidden"></p>
                     </div>
@@ -175,13 +158,13 @@
             </div>
 
             <!-- Right Side: Full Running Order Queue (5 Cols) -->
-            <div class="lg:col-span-5 flex flex-col h-full bg-dark-900 overflow-hidden">
-                <div class="px-6 py-4 bg-dark-800/50 border-b border-dark-600 flex items-center justify-between shrink-0">
+            <div class="lg:col-span-5 flex flex-col h-full bg-[#d7172f] overflow-hidden">
+                <div class="px-6 py-4 bg-black/30 border-b border-white/20 flex items-center justify-between shrink-0">
                     <h3 class="text-xs font-bold uppercase tracking-wider text-white/80">Full Schedule Queue</h3>
                     <span id="queue-count" class="text-xs text-white/70 font-mono">0 items</span>
                 </div>
                 
-                <div id="running-order-list" class="flex-1 overflow-y-auto divide-y divide-dark-600/50 p-4 space-y-2">
+                <div id="running-order-list" class="flex-1 overflow-y-auto divide-y divide-white/10 p-4 space-y-2">
                     <!-- Dynamic Items Injected Here -->
                 </div>
             </div>
@@ -240,7 +223,7 @@
                     const globalDate = new Date(data.datetime);
                     globalTimeOffset = globalDate.getTime() - Date.now();
                     timeSourceBadge.textContent = "Global Sync";
-                    timeSourceBadge.className = "text-[10px] font-sans px-1.5 py-0.5 rounded bg-black/30 text-white border border-white/20 uppercase tracking-widest";
+                    timeSourceBadge.className = "text-[10px] font-sans px-1.5 py-0.5 rounded bg-black/40 text-white border border-white/20 uppercase tracking-widest";
                 }
             } catch (err) {
                 console.warn("Could not reach global time server, using system clock fallback.", err);
@@ -267,14 +250,14 @@
         ['dragenter', 'dragover'].forEach(eventName => {
             dropZone.addEventListener(eventName, (e) => {
                 e.preventDefault();
-                dropZone.classList.add('border-white', 'bg-dark-900');
+                dropZone.classList.add('border-white', 'bg-black/30');
             }, false);
         });
 
         ['dragleave', 'drop'].forEach(eventName => {
             dropZone.addEventListener(eventName, (e) => {
                 e.preventDefault();
-                dropZone.classList.remove('border-white', 'bg-dark-900');
+                dropZone.classList.remove('border-white', 'bg-black/30');
             }, false);
         });
 
@@ -305,7 +288,7 @@
                     const worksheet = workbook.Sheets[firstSheetName];
                     const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
                     
-                    parseExcelJson(json);
+                    parseExcelJson(worksheet, json);
                 } catch (err) {
                     alert("Error reading Excel file. Please ensure it is a valid .xlsx or .csv file.");
                     console.error(err);
@@ -314,10 +297,14 @@
             reader.readAsArrayBuffer(file);
         }
 
-        function parseExcelJson(rows) {
+        function parseExcelJson(worksheet, rows) {
             let parsed = [];
             let timeColIndex = -1;
             let titleColIndex = -1;
+
+            const range = worksheet['!ref'] ? XLSX.utils.decode_range(worksheet['!ref']) : { s: { r: 0 } };
+            const startRow = range.s.r;
+            const rowMeta = worksheet['!rows'] || [];
 
             for (let r = 0; r < Math.min(rows.length, 5); r++) {
                 const row = rows[r];
@@ -345,14 +332,16 @@
             }
 
             for (let i = startIndex; i < rows.length; i++) {
-                const row = rows[i];
-                if (!row || row.length === 0) continue;
-
-                // Check if any cell in this row contains ignore keywords (spare, skip, hold, cancelled, etc.)
-                const rowString = row.join(' ').toLowerCase();
-                if (rowString.includes('spare') || rowString.includes('skip') || rowString.includes('hold') || rowString.includes('cancelled') || rowString.includes('exclude')) {
+                const actualRowIndex = startRow + i;
+                const meta = rowMeta[actualRowIndex];
+                
+                // Skip manually hidden rows or collapsed rows in Excel
+                if (meta && (meta.hidden || meta.collapsed || meta.hpx === 0 || meta.hpt === 0)) {
                     continue;
                 }
+
+                const row = rows[i];
+                if (!row || row.length === 0) continue;
                 
                 let rawTime = row[timeColIndex];
                 let rawTitle = row[titleColIndex];
@@ -504,21 +493,21 @@
                 const isActive = idx === activeIndex;
                 const isPast = idx < activeIndex;
 
-                let badgeClass = "bg-dark-700 text-white/90 border-dark-600";
-                let itemBg = "bg-dark-800/40 hover:bg-dark-800 border-dark-700/50";
+                let badgeClass = "bg-black/30 text-white/90 border-white/20";
+                let itemBg = "bg-black/10 hover:bg-black/25 border-white/10";
                 let textStyle = "text-white/80";
 
                 if (isActive) {
                     badgeClass = "bg-white text-[#d7172f] font-bold border-white";
-                    itemBg = "bg-white/10 border-white/40 shadow-lg";
+                    itemBg = "bg-white/20 border-white/40 shadow-lg";
                     textStyle = "text-white font-bold text-lg";
                 } else if (isPast) {
-                    itemBg = "bg-black/20 border-dark-800 opacity-50";
+                    itemBg = "bg-black/20 border-transparent opacity-50";
                     textStyle = "text-white/50 line-through";
                 }
 
                 html += `
-                    <div class="p-4 rounded-xl border ${itemBg} transition-all flex items-center justify-between gap-4">
+                    <div ${isActive ? 'id="active-queue-item"' : ''} class="p-4 rounded-xl border ${itemBg} transition-all flex items-center justify-between gap-4">
                         <div class="flex items-center space-x-3 min-w-0">
                             <span class="font-mono text-xs px-2.5 py-1 rounded-md border ${badgeClass} shrink-0">${item.time}</span>
                             <span class="truncate ${textStyle}">${item.title}</span>
@@ -527,7 +516,13 @@
                     </div>
                 `;
             });
-            runningOrderList.innerHTML = hl;
+            runningOrderList.innerHTML = html;
+
+            // Auto-scroll queue to keep active item in view
+            const activeEl = document.getElementById('active-queue-item');
+            if (activeEl) {
+                activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
         }
 
         setInterval(syncGlobalTime, 300000);
