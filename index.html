@@ -278,69 +278,71 @@
 
                         if (items.length === 0) continue;
 
-                        // Sort items top-to-bottom
-                        let sortedItems = [...items].sort((a, b) => b.y - a.y);
-                        
-                        // Group items into distinct vertical blocks (rows/events) based on vertical gap (< 16 points)
-                        let blocks = [];
-                        let currentBlock = [];
-                        let lastY = null;
+                        // Filter strictly to left-hand columns (Columns 1 & 2: x < 250)
+                        let leftItems = items.filter(item => item.x < 250);
 
-                        for (let item of sortedItems) {
-                            if (lastY === null || Math.abs(item.y - lastY) < 16) {
-                                currentBlock.push(item);
-                                if (lastY === null) lastY = item.y;
-                            } else {
-                                if (currentBlock.length > 0) blocks.push(currentBlock);
-                                currentBlock = [item];
-                                lastY = item.y;
+                        // Sort top-to-bottom
+                        leftItems.sort((a, b) => {
+                            if (Math.abs(a.y - b.y) > 3) {
+                                return b.y - a.y;
+                            }
+                            return a.x - b.x;
+                        });
+
+                        // Identify all timestamps and their indices
+                        let timeEntries = [];
+                        for (let idx = 0; idx < leftItems.length; idx++) {
+                            let item = leftItems[idx];
+                            let match = item.str.match(/\b(\d{1,2}[:\.]\d{2}(?:[:\.]\d{2})?)\b/);
+                            if (match) {
+                                timeEntries.push({
+                                    timeStr: match[1].replace(/\./g, ':'),
+                                    index: idx,
+                                    y: item.y,
+                                    x: item.x
+                                });
                             }
                         }
-                        if (currentBlock.length > 0) blocks.push(currentBlock);
 
-                        // Parse each block independently so rows never merge
-                        for (let block of blocks) {
-                            let timeStr = null;
-                            for (let item of block) {
-                                let match = item.str.match(/\b(\d{1,2}[:\.]\d{2}(?:[:\.]\d{2})?)\b/);
-                                if (match) {
-                                    timeStr = match[1].replace(/\./g, ':');
-                                    break;
-                                }
+                        // Each timestamp bounds its own row content up until the next timestamp
+                        for (let t = 0; t < timeEntries.length; t++) {
+                            let curEntry = timeEntries[t];
+                            let nextEntryIndex = (t + 1 < timeEntries.length) ? timeEntries[t + 1].index : leftItems.length;
+
+                            let slotParts = [];
+                            for (let k = curEntry.index + 1; k < nextEntryIndex; k++) {
+                                let item = leftItems[k];
+                                if (item.str.match(/\b\d{1,2}[:\.]\d{2}\b/)) continue;
+                                if (item.str.match(/^(PRE-MATCH|HALF\s*TIME|ACTION|TIME|RESPONSIBLE|NOTES)$/i)) continue;
+
+                                slotParts.push(item);
                             }
 
-                            if (timeStr) {
-                                // Extract text items in this block belonging to Column 2 (x < 250), ignoring timestamps, headers, and staff codes
-                                let textParts = block.filter(item => 
-                                    item.x < 250 && 
-                                    !item.str.match(/\b\d{1,2}[:\.]\d{2}\b/) && 
-                                    !item.str.match(/^(JD|JS|MB|DJ|CO|MUSIC|LED|SYNC|PRE-MATCH|HALF\s*TIME)$/i)
-                                );
-
-                                textParts.sort((a, b) => {
-                                    if (Math.abs(a.y - b.y) > 4) return b.y - a.y;
-                                    return a.x - b.x;
-                                });
-
-                                let titleText = textParts.map(p => p.str).join(' ').trim();
-                                titleText = titleText.replace(/\s+/g, ' ');
-
-                                if (titleText) {
-                                    const timeData = formatTimeString(timeStr);
-                                    parsed.push({
-                                        time: timeData.formatted,
-                                        rawSeconds: timeData.totalSeconds,
-                                        title: titleText,
-                                        description: ''
-                                    });
+                            slotParts.sort((a, b) => {
+                                if (Math.abs(a.y - b.y) > 4) {
+                                    return b.y - a.y;
                                 }
+                                return a.x - b.x;
+                            });
+
+                            let titleText = slotParts.map(p => p.str).join(' ').trim();
+                            titleText = titleText.replace(/\s+/g, ' ');
+
+                            if (titleText) {
+                                const timeData = formatTimeString(curEntry.timeStr);
+                                parsed.push({
+                                    time: timeData.formatted,
+                                    rawSeconds: timeData.totalSeconds,
+                                    title: titleText,
+                                    description: ''
+                                });
                             }
                         }
                     }
 
                     parsed.sort((a, b) => a.rawSeconds - b.rawSeconds);
 
-                    // Remove exact duplicates
+                    // Remove duplicates
                     let uniqueParsed = [];
                     let seen = new Set();
                     for (let item of parsed) {
