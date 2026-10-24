@@ -278,77 +278,61 @@
 
                         if (items.length === 0) continue;
 
-                        // 1. Cluster X coordinates to find column positions across the page
-                        let allX = items.map(item => item.x).sort((a, b) => a - b);
-                        let xClusters = [];
-                        let currentCluster = [allX[0]];
-                        for (let k = 1; k < allX.length; k++) {
-                            if (allX[k] - allX[k-1] < 30) {
-                                currentCluster.push(allX[k]);
-                            } else {
-                                let avgX = currentCluster.reduce((a, b) => a + b, 0) / currentCluster.length;
-                                xClusters.push(avgX);
-                                currentCluster = [allX[k]];
-                            }
-                        }
-                        let avgX = currentCluster.reduce((a, b) => a + b, 0) / currentCluster.length;
-                        xClusters.push(avgX);
-
-                        let timeColX = xClusters[0] || 40;
-                        let titleMinX = xClusters.length > 1 ? (xClusters[0] + xClusters[1]) / 2 : timeColX + 30;
-                        // Cut off right before the 3rd column to ignore columns 3 and 4 entirely
-                        let maxX = xClusters.length > 2 ? (xClusters[1] + xClusters[2]) / 2 : 10000;
-
-                        // 2. Find all timestamp items
-                        let timeItems = [];
+                        // Group text items into rows by vertical position (y)
+                        let rowsMap = {};
                         for (let item of items) {
-                            if (Math.abs(item.x - timeColX) < 50) {
-                                const timeMatch = item.str.match(/\b(\d{1,2}[:\.]\d{2}(?:[:\.]\d{2})?)\b/);
-                                if (timeMatch) {
-                                    timeItems.push({
-                                        str: timeMatch[1].replace(/\./g, ':'),
-                                        x: item.x,
-                                        y: item.y
-                                    });
-                                }
-                            }
+                            // Round y to group items on the same visual line
+                            let rowKey = Math.round(item.y / 6) * 6;
+                            if (!rowsMap[rowKey]) rowsMap[rowKey] = [];
+                            rowsMap[rowKey].push(item);
                         }
 
-                        // Sort timestamps top-to-bottom
-                        timeItems.sort((a, b) => b.y - a.y);
+                        // Sort row keys from top to bottom (PDF y is bottom-to-top, so descending y)
+                        let sortedRows = Object.keys(rowsMap).map(Number).sort((a, b) => b - a);
 
-                        // 3. For each timestamp, capture ALL text within its vertical row band and the Title column width
-                        for (let r = 0; r < timeItems.length; r++) {
-                            let currentTime = timeItems[r];
-                            let yTop = currentTime.y + 22;
-                            let yBottom = (r + 1 < timeItems.length) ? timeItems[r + 1].y + 12 : -1000;
+                        for (let yKey of sortedRows) {
+                            let rowItems = rowsMap[yKey];
+                            // Sort items in this row left to right by x
+                            rowItems.sort((a, b) => a.x - b.x);
 
-                            let cellItems = items.filter(item => 
-                                item.y >= yBottom && 
-                                item.y < yTop && 
-                                item.x >= titleMinX && 
-                                item.x < maxX
-                            );
-
-                            // Sort cell text fragments top-to-bottom, left-to-right
-                            cellItems.sort((a, b) => {
-                                if (Math.abs(a.y - b.y) > 4) {
-                                    return b.y - a.y;
+                            // Separate row items into horizontal columns based on spacing gaps (> 35 pixels)
+                            let columns = [];
+                            let currentColumn = [rowItems[0]];
+                            for (let c = 1; c < rowItems.length; c++) {
+                                if (rowItems[c].x - rowItems[c-1].x > 35) {
+                                    columns.push(currentColumn);
+                                    currentColumn = [rowItems[c]];
+                                } else {
+                                    currentColumn.push(rowItems[c]);
                                 }
-                                return a.x - b.x;
-                            });
+                            }
+                            if (currentColumn.length > 0) columns.push(currentColumn);
 
-                            let fullCellText = cellItems.map(item => item.str).join(' ').trim();
-                            fullCellText = fullCellText.replace(/\s+/g, ' ');
+                            // Check if Column 0 contains a time stamp
+                            if (columns.length > 0) {
+                                let col0Text = columns[0].map(item => item.str).join(' ');
+                                const timeMatch = col0Text.match(/\b(\d{1,2}[:\.]\d{2}(?:[:\.]\d{2})?)\b/);
 
-                            if (fullCellText) {
-                                const timeData = formatTimeString(currentTime.str);
-                                parsed.push({
-                                    time: timeData.formatted,
-                                    rawSeconds: timeData.totalSeconds,
-                                    title: fullCellText,
-                                    description: ''
-                                });
+                                if (timeMatch) {
+                                    let timeStr = timeMatch[1].replace(/\./g, ':');
+                                    
+                                    // Column 1 is the Title/Description cell. Columns 2 and 3 (index 2 and 3) are completely ignored.
+                                    let titleStr = "";
+                                    if (columns.length > 1) {
+                                        titleStr = columns[1].map(item => item.str).join(' ').trim();
+                                        titleStr = titleStr.replace(/\s+/g, ' ');
+                                    }
+
+                                    if (titleStr) {
+                                        const timeData = formatTimeString(timeStr);
+                                        parsed.push({
+                                            time: timeData.formatted,
+                                            rawSeconds: timeData.totalSeconds,
+                                            title: titleStr,
+                                            description: ''
+                                        });
+                                    }
+                                }
                             }
                         }
                     }
@@ -360,7 +344,7 @@
                         fileNameDisplay.textContent = `${currentLoadedFileName} (${runningOrderData.length} segments loaded)`;
                         fileLoadedAlert.classList.remove('hidden');
                     } else {
-                        alert("Could not detect valid running order rows in this PDF.");
+                        alert("Could not detect valid time stamps in Column 1 of this PDF.");
                     }
                 } catch (err) {
                     alert("Error reading PDF file.");
