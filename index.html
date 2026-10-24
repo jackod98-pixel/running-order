@@ -47,7 +47,7 @@
                     <div id="drop-zone" class="flex flex-col items-center justify-center border-2 border-dashed border-white/30 hover:border-white bg-black/20 hover:bg-black/30 rounded-xl p-8 cursor-pointer transition-all duration-300 group text-center">
                         <svg class="w-12 h-12 text-white/70 group-hover:text-white transition-colors mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                         <span class="text-sm font-medium text-white/90 group-hover:text-white transition-colors">Click to browse your PDF file, or <span class="underline underline-offset-4 text-white font-semibold">drop it here</span></span>
-                        <span class="text-xs text-white/70 mt-1">Supports .pdf files (Rows without times are automatically ignored)</span>
+                        <span class="text-xs text-white/70 mt-1">Supports .pdf files (Columns 3 & 4 ignored automatically)</span>
                         <input type="file" id="pdf-file" accept=".pdf" class="hidden">
                     </div>
                 </div>
@@ -274,7 +274,7 @@
                             str: item.str.trim(),
                             x: item.transform[4],
                             y: item.transform[5]
-                        }));
+                        })).filter(item => item.str.length > 0);
 
                         // Sort vertically top-to-bottom, then left-to-right
                         items.sort((a, b) => {
@@ -284,32 +284,71 @@
                             return a.x - b.x;
                         });
 
+                        // Group items into visual lines (rows)
                         let lines = [];
-                        let currentLine = '';
+                        let currentLineItems = [];
                         let lastY = null;
                         
                         for (let item of items) {
-                            if (!item.str) continue;
                             if (lastY === null || Math.abs(item.y - lastY) > 5) {
-                                if (currentLine) lines.push(currentLine.trim());
-                                currentLine = item.str;
+                                if (currentLineItems.length > 0) {
+                                    lines.push(currentLineItems);
+                                }
+                                currentLineItems = [item];
                                 lastY = item.y;
                             } else {
-                                currentLine += ' ' + item.str;
+                                currentLineItems.push(item);
                             }
                         }
-                        if (currentLine) lines.push(currentLine.trim());
+                        if (currentLineItems.length > 0) {
+                            lines.push(currentLineItems);
+                        }
 
-                        // Parse lines for time stamps. ANY line without a time is automatically ignored!
-                        for (let line of lines) {
-                            const timeMatch = line.match(/\b(\d{1,2}[:\.]\d{2}(?:[:\.]\d{2})?)\b/);
-                            if (timeMatch) {
-                                const timeStr = timeMatch[1].replace(/\./g, ':');
-                                let titleStr = line.replace(timeMatch[0], '').trim();
-                                titleStr = titleStr.replace(/^[-–—:\s]+|[-–—:\s]+$/g, '');
-                                
+                        // Process each line into columns based on horizontal gaps
+                        for (let lineItems of lines) {
+                            let cells = [];
+                            let currentCellItems = [];
+                            let lastX = null;
+
+                            for (let item of lineItems) {
+                                if (lastX === null) {
+                                    currentCellItems.push(item);
+                                } else {
+                                    let gap = item.x - lastX;
+                                    // If horizontal gap between text fragments is > 18 points, it's a new column/cell
+                                    if (gap > 18) {
+                                        cells.push(currentCellItems);
+                                        currentCellItems = [item];
+                                    } else {
+                                        currentCellItems.push(item);
+                                    }
+                                }
+                                lastX = item.x;
+                            }
+                            if (currentCellItems.length > 0) {
+                                cells.push(currentCellItems);
+                            }
+
+                            // Find which cell contains the timestamp
+                            let timeStr = null;
+                            let timeCellIndex = -1;
+
+                            for (let c = 0; c < cells.length; c++) {
+                                let cellText = cells[c].map(item => item.str).join(' ');
+                                const timeMatch = cellText.match(/\b(\d{1,2}[:\.]\d{2}(?:[:\.]\d{2})?)\b/);
+                                if (timeMatch) {
+                                    timeStr = timeMatch[1].replace(/\./g, ':');
+                                    timeCellIndex = c;
+                                    break;
+                                }
+                            }
+
+                            // If a time was found, Column 1 is Time, Column 2 is Title (entire cell text), and columns 3/4 are ignored
+                            if (timeCellIndex !== -1 && timeCellIndex + 1 < cells.length) {
+                                const timeData = formatTimeString(timeStr);
+                                const titleStr = cells[timeCellIndex + 1].map(item => item.str).join(' ').trim();
+
                                 if (titleStr) {
-                                    const timeData = formatTimeString(timeStr);
                                     parsed.push({
                                         time: timeData.formatted,
                                         rawSeconds: timeData.totalSeconds,
@@ -328,7 +367,7 @@
                         fileNameDisplay.textContent = `${currentLoadedFileName} (${runningOrderData.length} segments loaded)`;
                         fileLoadedAlert.classList.remove('hidden');
                     } else {
-                        alert("Could not find any lines with times in this PDF. Please ensure the PDF contains clear time stamps (e.g. 13:30:00).");
+                        alert("Could not detect valid running order columns. Please ensure your PDF has a time column followed by a title column.");
                     }
                 } catch (err) {
                     alert("Error reading PDF file.");
