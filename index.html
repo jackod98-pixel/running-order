@@ -32,7 +32,7 @@
                 <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
             </div>
             <h1 class="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">TV Running Order Display</h1>
-            <p class="mt-2 text-white/80 text-lg">Upload your Excel running order to launch the live TV dashboard.</p>
+            <p class="mt-2 text-white/80 text-lg">Upload your Excel running order workbook to launch the live TV dashboard.</p>
         </div>
 
         <div class="w-full bg-black/25 border border-white/20 rounded-2xl p-8 shadow-2xl relative overflow-hidden backdrop-blur-xl">
@@ -44,7 +44,7 @@
                     <div id="drop-zone" class="flex flex-col items-center justify-center border-2 border-dashed border-white/30 hover:border-white bg-black/20 hover:bg-black/30 rounded-xl p-8 cursor-pointer transition-all duration-300 group text-center">
                         <svg class="w-12 h-12 text-white/70 group-hover:text-white transition-colors mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                         <span class="text-sm font-medium text-white/90 group-hover:text-white transition-colors">Click to browse your Excel file, or <span class="underline underline-offset-4 text-white font-semibold">drop it here</span></span>
-                        <span class="text-xs text-white/70 mt-1">Supports .xlsx and .xls files (Col A: Time, Col B: Action)</span>
+                        <span class="text-xs text-white/70 mt-1">Supports .xls and .xlsx workbooks (Auto-selects matching match sheet)</span>
                         <input type="file" id="excel-file" accept=".xlsx, .xls, .csv" class="hidden">
                     </div>
                 </div>
@@ -251,6 +251,22 @@
             }
         });
 
+        function parseTimeCell(val) {
+            if (val === null || val === undefined) return null;
+            let str = val.toString().trim();
+            // Match HH:MM or HH:MM:SS
+            const match = str.match(/(\d{1,2})[:\.]([0-5]\d)(?:[:\.]([0-5]\d))?/);
+            if (match) {
+                let h = parseInt(match[1], 10);
+                let m = parseInt(match[2], 10);
+                let s = match[3] ? parseInt(match[3], 10) : 0;
+                let totalSeconds = h * 3600 + m * 60 + s;
+                let formatted = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+                return { totalSeconds, formatted };
+            }
+            return null;
+        }
+
         function handleFile(file) {
             runningOrderData = [];
             fileLoadedAlert.classList.add('hidden');
@@ -262,28 +278,53 @@
                     const data = new Uint8Array(e.target.result);
                     const workbook = XLSX.read(data, { type: 'array' });
                     
-                    // Read first worksheet
-                    const firstSheetName = workbook.SheetNames[0];
-                    const worksheet = workbook.Sheets[firstSheetName];
-                    
-                    // Convert to array of arrays
+                    // Find sheet matching filename or default to first sheet
+                    let targetSheetName = workbook.SheetNames[0];
+                    const lowerFileName = file.name.toLowerCase();
+                    for (let name of workbook.SheetNames) {
+                        const cleanName = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+                        const cleanFile = lowerFileName.replace(/[^a-z0-9]/g, '');
+                        if (cleanFile.includes(cleanName) || cleanName.includes('bristol')) {
+                            targetSheetName = name;
+                            break;
+                        }
+                    }
+
+                    const worksheet = workbook.Sheets[targetSheetName];
                     const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
                     let parsed = [];
 
                     for (let row of rows) {
                         if (!row || row.length === 0) continue;
 
-                        let timeCell = row[0] ? row[0].toString().trim() : "";
-                        let actionCell = row[1] ? row[1].toString().trim() : "";
+                        let timeObj = null;
+                        let actionText = "";
 
-                        // Check if Col A contains a time format (HH:MM or HH:MM:SS)
-                        const timeMatch = timeCell.match(/(\d{1,2})[:\.]([0-5]\d)(?:[:\.]([0-5]\d))?/);
-                        if (timeMatch && actionCell) {
-                            const timeData = formatTimeString(timeCell);
+                        // Scan cells in the row for time and action
+                        for (let cell of row) {
+                            if (cell !== null && cell !== undefined) {
+                                let cellStr = cell.toString().trim();
+                                if (!timeObj) {
+                                    let t = parseTimeCell(cellStr);
+                                    if (t) {
+                                        timeObj = t;
+                                        continue;
+                                    }
+                                }
+                                if (!actionText && cellStr.length > 1) {
+                                    let lower = cellStr.toLowerCase();
+                                    if (!['time', 'action', 'responsible', 'notes', 'pre-match', 'half time'].includes(lower) && !cellStr.startsWith('Stoke City')) {
+                                        actionText = cellStr;
+                                    }
+                                }
+                            }
+                        }
+
+                        if (timeObj && actionText) {
                             parsed.push({
-                                time: timeData.formatted,
-                                rawSeconds: timeData.totalSeconds,
-                                title: actionCell,
+                                time: timeObj.formatted,
+                                rawSeconds: timeObj.totalSeconds,
+                                title: actionText,
                                 description: ''
                             });
                         }
@@ -291,12 +332,23 @@
 
                     parsed.sort((a, b) => a.rawSeconds - b.rawSeconds);
 
-                    if (parsed.length > 0) {
-                        runningOrderData = parsed;
-                        fileNameDisplay.textContent = `${currentLoadedFileName} (${runningOrderData.length} segments loaded)`;
+                    // Remove duplicates
+                    let uniqueParsed = [];
+                    let seen = new Set();
+                    for (let item of parsed) {
+                        let key = item.rawSeconds + '-' + item.title;
+                        if (!seen.has(key)) {
+                            seen.add(key);
+                            uniqueParsed.push(item);
+                        }
+                    }
+
+                    if (uniqueParsed.length > 0) {
+                        runningOrderData = uniqueParsed;
+                        fileNameDisplay.textContent = `${currentLoadedFileName} [Sheet: ${targetSheetName}] (${runningOrderData.length} segments loaded)`;
                         fileLoadedAlert.classList.remove('hidden');
                     } else {
-                        alert("Could not detect valid running order data. Please ensure Column A has times and Column B has actions.");
+                        alert("Could not detect valid running order data in this Excel file. Please ensure time is in one column and action in another.");
                     }
                 } catch (err) {
                     alert("Error reading Excel file.");
@@ -306,27 +358,11 @@
             reader.readAsArrayBuffer(file);
         }
 
-        function formatTimeString(raw) {
-            let str = raw.toString().trim();
-            const match = str.match(/(\d{1,2})[:\.]([0-5]\d)(?:[:\.]([0-5]\d))?/);
-            let totalSeconds = 0;
-            let timeStr = "00:00:00";
-
-            if (match) {
-                let h = parseInt(match[1], 10);
-                let m = parseInt(match[2], 10);
-                let s = match[3] ? parseInt(match[3], 10) : 0;
-                totalSeconds = h * 3600 + m * 60 + s;
-                timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-            }
-            return { formatted: timeStr, totalSeconds: totalSeconds };
-        }
-
         launchBtn.addEventListener('click', () => {
             if (runningOrderData.length === 0) return;
             setupView.classList.add('hidden');
             displayView.classList.remove('hidden');
-            loadedFilenameTag.textContent = currentLoadedFileName;
+            loadedFilenameTag.textContent = `${currentLoadedFileName}`;
             queueCount.textContent = `${runningOrderData.length} items`;
             syncGlobalTime();
             updateClockAndState();
